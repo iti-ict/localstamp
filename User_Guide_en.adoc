@@ -1,0 +1,266 @@
+= Local Stamp User Guide
+
+== Introduction
+
+_LocalStamp_ is a solution that facilitates the development and testing of components and services for the `ECloud` framework.
+
+This solution runs an `ECloud` stamp in a single machine. With this solution you will be able to emulate locally a real `ECloud` stamp. Thus, you can deploy
+service applications resulting in a service running instance and access it for development and testing purposes. As a real `ECloud` stamp it makes use of Docker containers technology.
+
+The main difference of _LocalSTamp_ in regard to a real stamp is that it will not scale up and down the number of role instances of the service according to
+its workload variations. Therefore, _LocalStamp_ is not intended for real production scenarios.
+
+Moreover, as it is run in a single machine take care not to overload a _LocalStamp_ instance with many service application deployments or large service applications.
+
+Next section provides you some basic information for understanding _LocalStamp_.
+
+== _LocalStamp_ in a Nutshell
+
+As said _LocalStamp_ allows emulating an `ECloud` stamp locally but without scaling capabilities.
+
+In the same machine you can have several running instances of _LocalStamp_, having each one of them a unique identifier. Although possible it is not recommended. For short the term _stamp_ will be used in this document for referring to a running instance of _LocalStamp_.
+
+When a _LocalStamp_ is launched and executed a folder is created in the '/tmp/' folder of the computer naming it with the stamp identifier:  '/tmp/<stamp_id>'. The value of stamp_id, by default, is 'local-stamp'. Inside this folder is placed all the information used during its execution. Thus, if the computer running a stamp crashes or shuts down all this information is lost. Among this information has to be highlighted role instance information.
+
+As already commented several service application deployments can be performed in a stamp. So, if you use this characteristic take care of not running out of resources (remember that you are executing it locally).
+
+Now, once you know some basic hints of _LocalStamp_ the following sections will show you different ways of using _LocalStamp_.
+
+== Local Stamp Service
+
+This section explains how to use _LocalStamp_ as a service running in a Docker container instance.
+
+=== Launch Local Stamp
+
+In order to use it execute the `local-stamp-start.sh` script that will launch a _stamp_.
+
+_Usage_:
+
+ ./local-stamp-start.sh [configuration file]
+
+Where the configuration file is an optional parameter that specifies how to launch the _LocalStamp_. This configuration file is a json file that has the following fields and default values.
+
+[source,json]
+----
+{
+  "daemon":true,
+  "kibana": true,
+  "autoUnregister": false,
+  "autoUndeploy": false,
+  "stopLogger": false,
+  "destroyLogger": false
+}
+----
+
+The meaning of these options when they are true is:
+
+* daemon: Local Stamp starts as a daemon and waits for http requests.
+
+* kibana: Local Stamp logs are available from kibana.
+
+* autoUnregister: Local Stamp unregisters every component and service after a deployment.
+
+* autoUndeploy: Local Stamp, before a deployment, undeploys any existent deployment for the same service URN.
+
+* stopLogger: Local Stamp, on exit, stops logger docker instance.
+
+* destroyLogger: Local Stamp, on exit, destroys logger docker instance. This option has priority over stopLogger.
+
+Other options are:
+
+* admissionPort: Port where Local Stamp listens for http requests.
+
+* logger: Configuration of Local Stamp slap logger. Default value is:
+
+  {
+    vm: 'local-stamp',
+    transports: {
+      file: {level: 'debug', filename: 'slap.log'},
+      console: {level: 'warn'}
+    }
+  }
+
+* develBindings: Facility to ease development of components. Enables mounting inside component instances being launched, folders where corresponding source code is being edited . The value must be a map of list of strings. The map key is the role name for wich maping will be active. The value of each entry must be a list of strings following  docker syntax, that is "<host folder>:<container folder>". Aditionally, folders paired with special key value "__all" will be mounted for every instance, independently of its role. For example:
+
+ "develBindings":{
+    "component1":["/workspace/project/component1/src:/eslap/component/src"],
+    "component2":[
+      "/workspace/project/component2/src:/eslap/component/src",
+      "/workspace/project/component1/src:/eslap/component/node_modules/component1/src"
+    ]
+  }
+
+If _kibana_ is set to true and everything goes fine the system will return:
+
+----
+Using image eslap.cloud/local-stamp:1_0_1
+Local Stamp log in /tmp/local-stamp.log
+Local Stamp workdir in /tmp/local-stamp
+Using config: {
+  "daemon": true,
+  "kibana": true,
+  "autoUnregister": false,
+  "autoUndeploy": false,
+  "stopLogger": false,
+  "destroyLogger": false
+}
+Executing Logger in 172.17.0.3
+Starting Kibana on port 5601
+Local Stamp Started
+Listening on port 8090
+----
+
+As it can be seen it informs that an instance of _LocalStamp_ is up and running accepting requests in port `8090`.
+
+=== Deploying Services (Bundle)
+
+Once the _LocalStamp_ instance is up and running services can be deployed (and undeployed) sending bundles to its _Admission_ REST API, more specifically its
+method `admission/bundles`. In order to do so, `curl` command line tool can be used:
+
+_Usage_:
+
+ curl http://localhost:8090/admission/bundles -F bundlesZip=@PATH_TO_BUNDLE.zip
+
+Once executed _LocalStamp_ returns the response of trying to deploy the bundle. Here is shown an example of answer of deploying a service.
+
+[source,json]
+----
+{
+  "data": {
+    "deployments": {
+      "successful": [
+        {
+          "volumes": {   // <1>
+            "acs-2": {
+              "acs_vol": "/tmp/local-stamp/volumes/volume-1"
+            }
+          },
+          "portMapping": [   // <2>
+            {
+              "port": 9000,
+              "role": "clock",
+              "iid": "clock-1"
+            }
+          ],
+          "roles": {
+            "clock": {
+              "instances": [
+                "clock-1"
+              ]
+            },
+            "acs": {
+              "instances": [
+                "acs-2"
+              ]
+            }
+          },
+          "deploymentURN":  "slap://javaexample.examples.ecloud/deployments/20161014_111704/48e7b155" // <3>
+        }
+      ],
+      "errors": []
+    },
+    "errors": [],
+    "successful": [
+      "Registered element: eslap://javaexample.examples.ecloud/components/acs/0_5_0",
+      "Registered element: eslap://javaexample.examples.ecloud/components/simpleclock/0_5_0",
+      "Registered element: eslap://javaexample.examples.ecloud/services/clock/0_5_0"
+    ]
+  },
+  "message": "Bundle registration finished with no errors.", // <4>
+  "success": true
+}
+----
+From this answer have to be highlighted the following fields:
+
+<1> _volumes_ field specifies hosts folders supplied as volumes to the instance. In this case, acs-2 instance receives in its initial configuration resource _acs_value_ a container path bind to host folder /tmp/local-stamp/volumes/volume-1.
+
+<2> _portMapping_ field specifies the port where the service is listening. In this case specifies that _clock_ role is receiving requests in port `9000`.
+
+<3> _deploymentURN_ field is the identifier of the service deployment. This value is used for performing management operations over the service, as undeploying it.
+
+<4> _message_ field will detail if any problem arose during the deployment.
+
+This is the answer returned when using a _deployment_ bundle. In case of using a _test_ bundle some extra fields are added (`testToken` and `tests`).
+
+=== Accessing a Deployed Service
+
+Once a service is properly deployed in _LocalStamp_ it can be accessed through the roles that have a mapped port.
+
+In the previous example the deployed service can be accessed through port `9000`. Thus, assuming that the component of the role _clock_ offers a REST API
+method named `clock` requiring two parameters `username` and `password`:
+
+ curl http://localhost:9000/clock?username=me&password=me
+
+And it will be returned the expected answer.
+
+=== Port mapping
+
+Local Stamp gives access to the entrypoints of a service through port mapping. Starting at 9000, each entrypoint of each instance that is deployed will have incrementally assigned a new port number. For these purposes, Local Stamp considers as a entrypoint any component providing channel that is connected to a dependant service channel through a load balance connector.
+
+In this way, Local Stamp gives specific external access per instance, something that in an authentic stamp will not be available. A development should not be based on this particularity.
+
+=== Volume support
+
+Local Stamp supports the use of volumes in components, whether persistent or volatile. Within the Local Stamp folder (default is /tmp/local-stamp) can be found the _volumes_ directory. Performing deployments, in this folder, a directory is created for each volume type resource that has to be received by an instance in its startup configuration. Folders are created incrementally with the volume-<n> pattern.
+
+So, in the information of each deployment, for each instance, is shown a map with each resource of its configuration and the host directory to which it corresponds. When these instances are launched, their resources configuration has the values of corresponding container paths linked to these host directories.
+
+=== Listing Deployed Services
+
+Request the `admission/deployments` _Admission_ REST API method at any time you need to check the current list of deployments in the _LocalStamp_:
+
+_Usage_:
+
+ curl -s http://localhost:8090/admission/deployments
+
+Its execution will return a json file with the current listed deployments in the _LocalStamp_.
+
+=== Undeploying Services
+
+There are two ways of undeploying services in a _LocalStamp_: the official (and pretty) and the rude (and easy) ones.
+
+The official one makes use of the _Admission_ REST API method for undeploying services: `admission/undeploy`.
+
+_Usage_:
+
+ curl -X DELETE http://localhost:8090/admission/deployments?urn=SERVICE_DEPLOYMENT_URN
+
+As it can be seen it is necessary to pass as parameter the _deploymentURN_ of the service to be undeployed.
+
+The rude way just consists to stop the _LocalStamp_ execution. This can be done considering that this is a testing and local environment. In order to do so just execute `Ctrl+C` in the console where the _LocalStamp_ has been launched.
+
+[NOTE]
+.Resource consumption
+======
+Please take into account that if you start deploying services in a running _LocalStamp_ instance without undeploying previous ones at the end you can end up out of resources.
+======
+
+
+
+=== Relevant Folder and Logs
+
+When using the _LocalStamp_ instance launched as a service relevant information is stored in `/tmp/`. Most relevant files and folders are:
+
+* _/tmp/local-stamp.log_: this log contains information about the execution of the _LocalStamp_ instance.
+
+* _/tmp/<stamp_id>/_: inside this folder will be created several folders,  being the most important ones from a service testing point of view the  folders that are created for each _role instance_ in each deployed _service_.
+
+* _/tmp/<stamp_id>/<instance>/_: those folders contain the information necessary  for each role instance, including also the log resulting of its execution.
+
+* _/tmp/<stamp_id>/<instance>/slap.log_: this file contains the logging generated  during the role execution.
+
+
+=== Digesting Logs with Elastic Search and Kibana
+
+There is a way of digesting logs in a easier way. Accesing to:
+
+ http://localhost:5601/
+
+using a web browser you will access a web interface to a _Elastic Search_ + _Kibana_ installation that allows to process the generated logs.
+
+[NOTE]
+
+
+== Downloading and installing Local Stamp
+
+Local stamp can be installed using a installer script. This script can be obtained in local-stamp module git repository.

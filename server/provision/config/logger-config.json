@@ -1,0 +1,7 @@
+{
+  "console-log": true,
+  "console-level" : "error",
+  "file-log": true,
+  "file-level" : "debug",
+  "file-filename" : "slap.log"
+}

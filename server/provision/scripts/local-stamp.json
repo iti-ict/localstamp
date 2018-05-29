@@ -1,0 +1,13 @@
+{
+  "daemon": true,
+  "kibana": true,
+  "autoUnregister": false,
+  "autoUndeploy": false,
+  "stopLogger": false,
+  "destroyLogger": false,
+  "logFile": "/srv/local-stamp/local-stamp.log",
+  "manifestStorage": "/srv/local-stamp/storage/manifests",
+  "imageStorage": "/srv/local-stamp/storage/images",
+  "instanceFolder": "/srv/local-stamp/instances",
+  "volumeFolder": "/srv/local-stamp/volumes"
+}

@@ -1,0 +1,341 @@
+= Local Stamp
+Jerónimo Pla Civera <jpla@iti.upv.es>
+v1.0, 2016-09-26
+:toc:
+
+== Introduction
+
+LocalStamp es una clase para facilitar el desarrollo y testeo de componentes y servicios para el framework `ECloud`. Permite la instanciación de componentes usando directamente sus clases, mediante contenedores `Docker` y utilizando bundles.
+
+== Local Stamp Creation
+
+Para usar _LocalStamp_ primero debemos crear una instancia y después invocar a su método _init_ para que se inicialize. _init_ es asíncrono y devuelve una promesa.
+
+[source]
+----
+LocalStamp = require 'local-stamp'
+
+stamp = new LocalStamp()
+stamp.init()
+.then ->
+  console.log 'Workspace ready'
+----
+
+El constructor de _LocalStamp_ acepta un parámetro opcional con el identificador del stamp. Por defecto tomal el valor 'test'. Este identificador se usa darle nombre a la carpeta dentro del directorio /tmp donde se depositarán los ficheros  relacionados con el despliegue.
+
+[source]
+----
+class LocalStamp
+
+  constructor: (@id = 'test', @config = {})->
+----
+
+Existe un segundo parámetro opcional con configuración adicional para el stamp. Por el momento, esta configuración puede contener:
+
+* *runtimeFolder*: Path donde reside una copia funcional del `runtime-agent, con todas sus dependencias instaladas. Se usa para ser montado dentro de las instancias lanzadas usando contenedores docker. Por defecto, este parámetro toma el valor '/tmp/runtime-agent'. Es necesario que el valor de esta clave apunte a una carpeta con el contenido descrito anteriormente para que la instancia de _LocalStamp_ funcione correctamente. Para crear una copia funcional del runtime-agent habría que ejecutar los comandos:
+
+[source, bash]
+----
+cd /tmp # carpeta que contendrá el runtimeFolder
+git clone git@gitlab.com:ECloud/sep-agent.git
+cd runtime-agent
+npm install
+----
+
+Si el path suministrado corresponde con una carpeta inexistente, LocalStamp ejecuta las anteriores instrucciones y prepara un runtime-agent funcional para ser usado.
+
+Durante la inicialización de la instancia se realizan varias acciones:
+
+* Eliminación de instancias de docker de ejecuciones anteriores con el mismo id de stamp local.
+
+* Borrado de anteriores ficheros dentro del directorio del stamp.
+
+* Creación de la estructura de carpetas básica para el funcionamiento del stamp.
+
+* Copia de la carpeta con el runtime-agent a la carpeta del stamp.
+
+
+== Component Instance Creation
+
+Las instancias de componente dentro de un stamp local se agrupan en despliegues. El identificador de un despliegue es una cadena. Si al desplegar una instancia de un componente no se indica un identificador de despliegue, la instancia se asocia al despliegue '_default_'. Existen varios maneras de desplegar una instancia dentro de un despliegue.
+
+=== Classes
+
+Este método es el de más bajo nivel. Asume que tenemos acceso a la clase `NodeJS` con el código del componente que queremos instanciar. Con este método se levanta una instancia del runtime-agent que, a su vez, creará una instancia de la clase del componente.
+
+[source]
+----
+launch: (klass, config, deploymentId = 'default')->
+----
+
+Como segundo parámetro obligatorio del método hay que indicar la configuración del componente que será usada en la ejecución de su constructor. La estructura de esta configuración inicial se corresponde con los parámetros del constructor de un componente ECloud. Estos parámetros vienen descritos en la documentación del SDK de Ecloud. El siguiente ejemplo muestra una posible configuración inicial de un componente:
+
+[source]
+----
+REPLY_CHANNEL =
+  id:'reply'
+  type:'Reply'
+
+RECEIVE_CHANNEL =
+  id:'rcv'
+  type:'Receive'
+
+DUPLEX_CHANNEL =
+  id: 'dup'
+  type: 'Duplex'
+
+COMPONENT_CONFIG =
+  iid: 'tested'
+  incnum: 1
+  localData: '/tmp'
+  parameters: {}
+  resources: {}
+  role: 'TESTED'
+  offerings: [REPLY_CHANNEL, RECEIVE_CHANNEL]
+  dependencies: [DUPLEX_CHANNEL]
+----
+
+La clase del componente puede ser compleja o una muy sencilla, hecha específicamente para los tests:
+
+[source]
+----
+class ComponentTested extends Component
+  constructor: (@runtime, @role, @iid, @incnum, @localData, @resources
+  , @parameters, @dependencies, @offerings) ->
+    @state = ''
+
+  run: ->
+    @running = true
+    @offerings.reply.handleRequest = (m)->
+      q [['This is my answer',m[0]]]
+
+    @offerings.rcv.on 'message', (m)=>
+      @state = m.toString()
+
+    @dependencies.dup.on 'message', (m)=>
+      @state = m.toString()
+
+  shutdown: ->
+    @running = false
+----
+
+La creación de la instancia en el stamp se haría con:
+
+[source]
+----
+stamp = new LocalStamp()
+...
+stamp.launch ComponentTested, COMPONENT_CONFIG
+.then ->
+  # Puede ser util
+  instance = stamp.instances[COMPONENT_CONFIG.iid].instance
+  config =   stamp.instances[COMPONENT_CONFIG.iid].config
+----
+En el ejemplo, _instance_ es la instancia de la clase que se ha creado. Puede ser útil para comprobar el estado de la instancia del componente o, por ejemplo, para ejecutar métodos de la instancia que manden mensajes a otras instancias. Este modo de lanzar la instancia es la única que nos permite un acceso a tan bajo nivel a ésta.
+
+////
+=== Gateway
+
+TBD.
+
+////
+
+=== Docker
+
+En este caso, en lugar de suministrar una referencia a la clase con la implementación del componente, lo que suministraremos será la configuración con la que se debe lanzar el contenedor docker que ejecutará una instancia del componente usando su runtime asociado. La configuración del componente sigue las mismas pautas que en el caso de la instanciación mediante clases.
+
+[source]
+----
+launchDocker: (localConfig, config, deployment = 'default')->
+----
+
+La configuración mínima de docker debe contener los siguientes elementos:
+
+----
+DOCKER_CONFIG =
+  runtime :       'eslap.cloud/runtime/java:1_0_1',
+  componentPath : "#{COMPONENTS_PATH}/myComponent/code/src/tests/build"
+----
+
+`runtime` se corresponde con el nombre de la imagen docker que debe usarse al lanzar el contenedor. Si la imagen no está disponible en el sistema, se generará un error indicándolo.
+
+`componentPath` se corresponde con la carpeta donde están los ficheros del componente. La disposición de ficheros de este componente debe corresponderse a lo esperado por el runtime que se esté utilizando. Como se describe en el manual del SDK, en el caso de componentes basados en NodeJS, se espera que en la carpeta _componentPath_ estén los ficheros con el módulo del componente. La clase del componente debe ser lo único exportado por el módulo y las dependencias deben estar instaladas. En el manual del SDK también se describe la disposición esperada para componentes Java.
+
+----
+stamp.launchDocker DOCKER_CONFIG, COMPONENT_CONFIG
+----
+
+Adicionalmente, es posible indicar en la configuración de docker información sobre binding de carpetas y puertos TCP.
+
+----
+DOCKER_CONFIG =
+  runtime :       'eslap.cloud/runtime/java:1_0_1',
+  componentPath : "#{COMPONENTS_PATH}/myComponent/code/src/tests/build"
+  ports: ['9000:8000']
+  volumes: ['/tmp/folder:/eslap/folder']
+----
+
+En la clave _ports_ podemos indicar una lista de mapeos de puerto. Cada mapeo se indica con un string en que los dos puertos se separan por ':'. El segundo puerto en la cadena es el puerto interno de docker que queremos mapear, el primero es el puerto externo al que se desea mapear el interno.
+
+Esta clave se usará habitualmente para poder acceder a una API Rest ofrecida por el componente. Los componentes NodeJS que utilizan 'http-message' para ofrecer servicios HTTP, pueden ser accedidos a través del puerto 8000. Los componentes Java que integran una aplicación web ofrecen su funcionalidad en el puerto 8080.
+
+La clave _volumes_ funciona de forma similar a _ports_. Son dos rutas separadas por la cadena ':'. La primera es una ruta en el sistema de ficheros donde se está ejecutando el stamp y la segunda es donde se desea que sea accesible dentro del contenedor docker.
+
+Adicionalmente a lo especificado en la clave _volumes_, hay una serie de rutas que son mapeadas automáticamente por Local Stamp. Los mapeos automáticos son los siguientes:
+
+ * La carpeta a la que apunta el valor de la clave componentPath de la configuración docker, se mapea a la ruta '/eslap/component' dentro del contenedor.
+
+ * La carpeta para ficheros locales de la instancia de componente dentro del contenedor es '/eslap/data'. Se ignora cualquier valor asignado dentro de la configuración de componente recibida. La correspondiente carpeta mapeada dentro del sistema anfitrión está dentro de una carpeta creada para la instancia dentro del directorio de trabajo del stamp.
+
+----
+  @lsRepo = "/tmp/#{@id}"
+  @runtimeFolder = "#{@lsRepo}/runtime-agent"
+
+  instanceFolder = "#{@lsRepo}/#{config.iid}"
+  socketFolder="#{instanceFolder}/gw-sockets"
+  tmpFolder = "#{instanceFolder}/tmp"
+----
+
+ * El runtime-agent dentro del contenedor docker debe localizarse en '/eslap/runtime-agent'. Local Stamp crea una copia del runtime-agent configurado dentro de la carpeta del stamp y lo mapea a la carpeta adecuada.
+
+ * Para facilitar la lectura de los logs del runtime-agent, se mapea el fichero 'slap.log' a la carpeta de la instancia dentro del directorio de trabajo del stamp.
+
+----
+stamp = new LocalStamp()
+...
+stamp.launchDocker DOCKER_CONFIG, COMPONENT_CONFIG
+.then ->
+  # Puede ser util
+  config =   stamp.instances[COMPONENT_CONFIG.iid].config
+  dockerName = stamp.instances[COMPONENT_CONFIG.iid].dockerName
+  logging =   stamp.instances[COMPONENT_CONFIG.iid].logging
+----
+
+Una instancia docker tiene accesible su configuración, el identificador de su contenedor y el modo de logging. Si _logging_ vale _true_ todo lo que salga por su sálida estándar irá a los logs, si vale _false_ se ignorará. En el momento de la creación del contenedor vale _true_ y puede ser cambiado en cualquier momento.
+
+=== Conectores
+
+Local Stamp ofrece conectores para conectar instancias de componentes asociados a un rol. La manera de indicar estas conexiones es similar a como se hace en los manifiestos de servicio.
+
+----
+  connect: (connector, provided, depended, deploymentId = 'default')->
+----
+
+El parámetro _connector_ es una cadena de texto que indica el tipo de conector. Puede valer _loadbalancer_, _pubsub_ y _complete_. La semantica de estos valores es la misma que en los manifiestos de servicio.
+
+El parametro _provided_ y _depended_ son unos arrays con la lista de pares rol, canal a emparejar. Adicionalmente, se puede especificar un campo _deployment_ en las entradas para indicar conexión entre distintos despliegues. Si no se especifica este campo opcional, se asume que las entradas pertenecen al deployment del parámetro _deploymentId_.
+
+Ejemplo de invocaciones al metodo _connect_:
+
+----
+    stamp.connect 'loadbalancer',
+      [{role:'TESTED', endpoint:'reply'}],
+      [{role:'TESTER', endpoint:'req'}]
+
+    stamp.connect 'pubsub',
+      [{role:'TESTED', endpoint: 'rcv'}],
+      [{role:'TESTER', endpoint: 'send'}]
+
+    stamp.connect 'complete',
+      [{role:'TESTED', endpoint: 'dup'}],
+      [{role:'TESTER', endpoint: 'dup'}]
+----
+
+Existe un método explicito para conectar los canales de servicio de dos despliegues:
+
+----
+  connectDeployments: (join)->
+----
+
+La estrucutura esperada del join es la del siguiente ejemplo:
+
+----
+  stamp.connectDeployments
+    spec: 'http://eslap.cloud/manifest/link/1_0_0'
+    endpoints: [
+      {
+        deployment: frontDeployment
+        channel: 'back'
+      },
+      {
+        deployment: backDeployment
+        channel: 'service'
+      }
+    ]
+----
+
+
+=== Bundle
+
+Esta opción de despliegue es la más cercana a cómo se haría en un stamp auténtico. Con esta opción se despliegue un bundle entero del mismo modo que se haría en un test funcional. Típicamente, el bundle contendrá imágenes y manifiesto de componentes, manifiesto de servicio y manifiesto de despliegue. También se permite la inclusión de resources.
+
+----
+  launchBundle: (path)->
+----
+
+En este caso hay un único parámetro _path_ que contiene la ruta para llegar hasta el archivo zip con el bundle que se quiere desplegar. No se incluye la posibilidad de nombrar al despliegue y los nombres de los despliegues se generan automáticamente.
+
+Si el bundle contiene un manifiesto de despliegue, la configuración del despliegue se genera automáticamente a partir de los manifiestos del bundle. Se generan los valores de configuración inicial, tanto para parámetros como para recursos. Se realizan las conexiones entre instancias en base a lo descrito en el manifiesto de servicio. Se toma en cuenta el valor de `__instances` para cada rol en el manifiesto de despliegue para el número de instancias desplegadas dentro del stamp.
+
+_launchBundle_ devuelve una promesa que se resuelve cuando se han desplegado todas las instancias.  Las instancias se despliegan utilizando contenedores docker. Usualmente, esto no quiere decir que las instancias estén completamente operativas ya que esto puede tardar unos segundos. Es conveniente antes de lanzar peticiones a las instancias, hacer una pausa de unos segundos o implementar una fase de espera que vaya probando si el servicio está disponible. La promesa se resuelve con información de qué se ha desplegado junto con algunos datos que pueden ser interesantes.
+
+Ejemplo de estructura con la que se resuelve la promesa de _launchBundle_:
+----
+{
+  "successful": [
+    "Registered element: eslap://jrwe.examples.ecloud/resources/volumes/persistent",
+    "Registered element: eslap://jrwe.examples.ecloud/components/cfe/0_0_1",
+    "Registered element: eslap://jrwe.examples.ecloud/components/data/0_0_1",
+    "Registered element: eslap://jrwe.examples.ecloud/services/jrwe/0_0_2"
+  ],
+  "errors": [],
+  "deployments": {
+    "errors": [],
+    "successful": [
+      {
+        "deploymentURN": "slap://jrwe.examples.ecloud/deployments/20161003_130315/2c3db903"",
+        "roles": {
+          "data": {
+            "instances": [
+              "data-5"
+            ]
+          },
+          "cfe": {
+            "instances": [
+              "cfe-6"
+            ]
+          }
+        },
+        "portMapping": [
+          {
+            "iid": "cfe-6",
+            "role": "cfe",
+            "port": 9003
+          }
+        ],
+        "volumes": {
+          "data-5": {
+            "forever": "/tmp/test/volumes/volume-1",
+            "temporal": "/tmp/test/volumes/volume-2"
+          }
+        }
+      }
+    ]
+  }
+}
+----
+
+La lista de deployments activos se puede consultar en cualquier momento en la propiedad _deployments_ del objeto stamp.
+
+Los volúmenes asignados a la instancia se realizan de acuerdo a los recursos de su configuración. No se hace distinción en el tratamiento de volúmenes persistentes y volúmenes volátiles. Los volúmenes que ve la instancia se corresponden con directorios creados secuencialmente en el directorio de trabajo del stamp.
+
+Los puertos mapeados de forma automática se implementan en base a la existencia de canales de servicio en la instancia desplegada. Si tiene canal de servicio se mapea el puerto docker a un puerto del host. El puerto del host se asigna secuencialmente comenzando en el 9000 y el puerto docker se asigna en función del runtime: 8000 a no ser que sea una instancia con runtime java, en cuyo caso se asigna el 8080.
+
+== Local Stamp Shutdown
+
+----
+  shutdown: ->
+----
+
+Elimina todas las instancias levantadas en el stamp, independientemente de con qué método hayan sido levantadas.
+

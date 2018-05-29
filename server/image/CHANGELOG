@@ -1,0 +1,79 @@
+CHANGELOG
+
+1_0_6
+---------------------
+El manifiesto del httpsep se provee de forma interna
+
+1_0_7
+---------------------
+Solucionado fallo en los unregister
+Aviso de nueva versión estable
+
+1_0_8
+---------------------
+Ahora se usa el package docker-engine 1.10.3 en lugar del docker-io 1.6.2
+Activadas las restricciones en el uso de memoria del manifiesto de despliegue
+
+1_0_9
+---------------------
+Single list complete connectors supported
+User guide
+Installation script
+
+1_0_10
+---------------------
+icc=false support
+
+1_0_11
+---------------------
+Runtime bundle support
+
+2_0_0
+---------------------
+Deployment info adapted for true stamp compatibility
+Admission Event Support
+ACS Mock Support
+Manual Scaling Support
+
+2_2_0
+---------------------
+Runtime agents support
+Initial storage now has core runtime manifest
+Runtime manifest properties support
+
+2_3_0
+---------------------
+Deployment reconfiguration support
+
+2_4_0
+---------------------
+nginx integration
+LB of http requests
+dashboard integration
+
+2_4_1
+---------------------
+Several bug fixes
+
+3_0_0
+---------------------
+New folder configuration
+Volumes support enhanced
+Several bug fixes
+
+3_1_0
+---------------------
+Membership handling revised and corrected
+State management redesigned
+
+3_1_2
+---------------------
+Corrected some issues in fresh not active yet instances
+
+3_2_0
+---------------------
+Consistent hashing requests support
+
+3_3_0
+---------------------
+Automatic installation of core runtimes

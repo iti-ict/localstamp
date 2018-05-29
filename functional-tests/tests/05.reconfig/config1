@@ -1,0 +1,11 @@
+{
+  "false": false,
+  "true": true,
+  "hello": "hello",
+  "zero": 0,
+  "number": 24,
+  "json": {
+    "b": 2,
+    "a": 1
+  }
+}

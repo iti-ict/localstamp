@@ -1,0 +1,12 @@
+{
+  "action": "reconfig",
+  "deploymentUrn": "slap://sampleinterservice/deployments/20180301_171356/031f4a02",
+  "configuration": {
+    "parameters":{
+      "cfe":{
+        "json":{"b":2},
+        "number": 24
+      }
+    }
+  }
+}

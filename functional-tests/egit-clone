@@ -1,0 +1,46 @@
+#!/bin/sh
+MODULE=$1
+BRANCH=$2
+REPOSITORY=$3
+GIT_SERVER=$4
+
+TMPFILE=$(mktemp)
+
+CNR_RETRIES=15
+CNR_SLEEP=10
+
+[ -z "${MODULE}" ] && echo "Usage: egit.sh module [branch] [repository] [git_server]" && exit 1
+[ -z "${BRANCH}" ] && BRANCH="master"
+[ -z "${REPOSITORY}" ] && REPOSITORY="ECloud"
+[ -z "${GIT_SERVER}" ] && GIT_SERVER="gitlab.com"
+
+ebranch="master"
+if [ "${BRANCH}" != "master" ]; then
+  counter=0
+  while : ; do
+    counter=$((counter+1))
+    [ $counter -gt $CNR_RETRIES ] && echo "Aborting egit-clone" && rm $TMPFILE && exit -1
+    [ $counter -gt 1 ] && echo "Attempt "$counter
+    git ls-remote --heads git@${GIT_SERVER}:${REPOSITORY}/${MODULE}.git 2>&1 > $TMPFILE
+    grep -q "Could not read from remote repository" $TMPFILE && echo "Remote repository error... Retrying" && sleep $CNR_SLEEP && continue
+    grep -q "heads/${BRANCH}$" $TMPFILE && ebranch=${BRANCH}
+    break;
+  done
+fi
+
+rm $TMPFILE
+
+TMPFILE=$(mktemp)
+
+echo "Cloning branch $ebranch from git@${GIT_SERVER}:${REPOSITORY}/${MODULE}.git"
+counter=0
+while : ; do
+  counter=$((counter+1))
+  [ $counter -gt $CNR_RETRIES ] && echo "Aborting egit-clone" && rm $TMPFILE && exit -2
+  [ $counter -gt 1 ] && echo "Attempt "$counter
+  git clone --branch ${ebranch} git@${GIT_SERVER}:${REPOSITORY}/${MODULE}.git 2>&1 | tee $TMPFILE
+  grep -q "Could not read from remote repository" $TMPFILE && echo "Remote repository error... Retrying" && sleep $CNR_SLEEP && continue
+  break;
+done
+
+rm $TMPFILE
