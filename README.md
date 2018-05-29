@@ -1,10 +1,10 @@
 ## README
 
-This is a tool… TBC por Paco
-
 The current version of **localstamp** code has some software dependencies that can not be currently resolved due to restricted access. For this reason, in this version you cannot build **localstamp** from the source code. Nevertheless, in the **dist** folder you will have access to two packaged distributions of **localstamp** ready to be used, one for Linux systems and another for Mac systems. Enjoy yourself!
 
 ### Documentation
+
+In this [link](User_Guide_en.adoc) you can find info about how to use localstamp tool.
 
 ## Introduction
 
