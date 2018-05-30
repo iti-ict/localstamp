@@ -23,7 +23,7 @@
     "type": "git",
     "url": "git@gitlab.com:ECloud/local-stamp.git"
   },
-  "author": "Jerónimo Pla-Civera",
+  "author": "ITI",
   "license": "ISC",
   "dependencies": {
     "admission": "git+ssh://git@gitlab.com:ECloud/admission.git",
